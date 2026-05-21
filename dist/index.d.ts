@@ -19,6 +19,7 @@ export declare class NativeWebBridge {
     private messageQueue;
     private readonly options;
     constructor(options?: BridgeOptions);
+    private autoUnlockQueue;
     private setupGlobalReceiver;
     private encode;
     private decode;
