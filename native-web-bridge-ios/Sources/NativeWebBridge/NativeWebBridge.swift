@@ -54,12 +54,48 @@ public class NativeWebBridge: NSObject, WKScriptMessageHandler, CLLocationManage
     public func triggerBackButton() { sendCommandToWeb(action: "event.app.backButton") }
     
     // 🚀 4. Added 'public' to delegate methods required by public protocols
+    // 🚀 FIXED: Now accepts JS Objects, JSON Strings, AND Base64
     public func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard let b64String = message.body as? String, let data = Data(base64Encoded: b64String), let dict = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] else { return }
-        let type = dict["type"] as? String ?? ""; let id = dict["id"] as? String ?? ""; let action = dict["action"] as? String ?? ""; let payload = dict["payload"] as? [String: Any] ?? [:]
-        if type == "request" || type == "command" { if let handler = customHandlers[action] { handler(payload) { [weak self] res, err in if type == "request" { self?.sendResponse(id: id, payload: res, error: err) } } } else if type == "request" { sendResponse(id: id, payload: nil, error: "Not implemented on iOS: \(action)") } }
-    }
-    
+        
+        var dict: [String: Any]? = nil
+        
+        // 1. Did Vue send a direct JS Object?
+        if let bodyDict = message.body as? [String: Any] {
+            dict = bodyDict
+        } 
+        // 2. Did Vue send a raw JSON string?
+        else if let jsonString = message.body as? String {
+            // Check if it's base64 first, otherwise parse as raw JSON
+            if let data = Data(base64Encoded: jsonString),
+               let parsed = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
+                dict = parsed
+            } else if let data = jsonString.data(using: .utf8),
+                      let parsed = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
+                dict = parsed
+            }
+        }
+        
+        // If we still couldn't parse it, drop it.
+        guard let payloadDict = dict else {
+            print("⚠️ NativeWebBridge: Failed to parse incoming message from Vue.")
+            return 
+        }
+        
+        let type = payloadDict["type"] as? String ?? ""
+        let id = payloadDict["id"] as? String ?? ""
+        let action = payloadDict["action"] as? String ?? ""
+        let payload = payloadDict["payload"] as? [String: Any] ?? [:]
+        
+        if type == "request" || type == "command" { 
+            if let handler = customHandlers[action] { 
+                handler(payload) { [weak self] res, err in 
+                    if type == "request" { self?.sendResponse(id: id, payload: res, error: err) } 
+                } 
+            } else if type == "request" { 
+                sendResponse(id: id, payload: nil, error: "Not implemented on iOS: \(action)") 
+            } 
+        }
+    }    
     private func dispatchToWeb(base64Payload: String) {
         let script = "if(window.NativeBridgeReceiver) { window.NativeBridgeReceiver.receiveMessage('\(base64Payload)'); }"
         DispatchQueue.main.async { if self.isWebReady { self.webView?.evaluateJavaScript(script, completionHandler: nil) } else { self.nativeMessageQueue.append(script) } }
