@@ -9,7 +9,7 @@ import Network
 import StoreKit
 import UserNotifications
 
-class WebNativeBridge: NSObject, WKScriptMessageHandler, CLLocationManagerDelegate {
+class NativeWebBridge: NSObject, WKScriptMessageHandler, CLLocationManagerDelegate {
     
     private weak var webView: WKWebView?
     private weak var viewController: UIViewController?
