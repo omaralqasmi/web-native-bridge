@@ -54,26 +54,39 @@ public class NativeWebBridge: NSObject, WKScriptMessageHandler, CLLocationManage
     public func triggerDeepLink(url: String) { sendCommandToWeb(action: "event.app.deepLink", payload: ["url": url]) }
     public func triggerBackButton() { sendCommandToWeb(action: "event.app.backButton") }
     
-    // 🚀 3. FIXED PARSER: Matches Android's forgiving Base64.DEFAULT behavior
+// ==========================================
+    // 🚀 1. THE BULLETPROOF INBOUND PARSER
+    // ==========================================
     public func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        print("📥 NATIVE BRIDGE RAW INBOUND: \(message.body)")
         var dict: [String: Any]? = nil
         
         if let bodyDict = message.body as? [String: Any] {
             dict = bodyDict
-        } else if let jsonString = message.body as? String {
-            if let data = Data(base64Encoded: jsonString, options: .ignoreUnknownCharacters),
-               let parsed = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
+        } else if let str = message.body as? String {
+            // Try standard JSON first
+            if let data = str.data(using: .utf8),
+               let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
                 dict = parsed
-            } else if let data = jsonString.data(using: .utf8),
-                      let parsed = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
-                dict = parsed
+            } else {
+                // Try Base64, but fix Swift's terrible padding limitations first
+                var b64 = str.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+                let remainder = b64.count % 4
+                if remainder > 0 { b64 += String(repeating: "=", count: 4 - remainder) }
+                
+                if let data = Data(base64Encoded: b64),
+                   let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    dict = parsed
+                }
             }
         }
         
         guard let payloadDict = dict else {
-            print("⚠️ NativeWebBridge: Failed to parse incoming message.")
+            print("❌ NATIVE BRIDGE FATAL: Could not parse Vue message. Payload: \(message.body)")
             return 
         }
+        
+        print("✅ NATIVE BRIDGE PARSED: \(payloadDict)")
         
         let type = payloadDict["type"] as? String ?? ""
         let id = payloadDict["id"] as? String ?? ""
@@ -91,19 +104,41 @@ public class NativeWebBridge: NSObject, WKScriptMessageHandler, CLLocationManage
         }
     }
     
-    private func dispatchToWeb(base64Payload: String) {
-        let script = "if(window.NativeBridgeReceiver) { window.NativeBridgeReceiver.receiveMessage('\(base64Payload)'); }"
-        DispatchQueue.main.async { if self.isWebReady { self.webView?.evaluateJavaScript(script, completionHandler: nil) } else { self.nativeMessageQueue.append(script) } }
-    }
-    
-    private func flushNativeQueue() { DispatchQueue.main.async { self.nativeMessageQueue.forEach { self.webView?.evaluateJavaScript($0, completionHandler: nil) }; self.nativeMessageQueue.removeAll() } }
-    
+    // ==========================================
+    // 🚀 2. THE OUTBOUND SENDER (With Logging)
+    // ==========================================
     private func sendResponse(id: String, payload: Any?, error: String?) {
-        var response: [String: Any] = ["id": id, "type": "response"]; if let p = payload { response["payload"] = p }; if let e = error { response["error"] = e }
-        if let data = try? JSONSerialization.data(withJSONObject: response) { 
-            dispatchToWeb(base64Payload: data.base64EncodedString()) 
+        var response: [String: Any] = ["id": id, "type": "response"]
+        if let p = payload { response["payload"] = p }
+        if let e = error { response["error"] = e }
+        
+        do {
+            let data = try JSONSerialization.data(withJSONObject: response)
+            let b64 = data.base64EncodedString()
+            print("📤 NATIVE BRIDGE OUTBOUND: Sending response for ID \(id)")
+            dispatchToWeb(base64Payload: b64)
+        } catch {
+            print("❌ NATIVE BRIDGE ENCODE ERROR: \(error)")
         }
     }
+    
+    // ==========================================
+    // 🚀 3. THE JAVASCRIPT EXECUTOR (With Safety Checks)
+    // ==========================================
+    private func dispatchToWeb(base64Payload: String) {
+        let script = "if(window.NativeBridgeReceiver) { window.NativeBridgeReceiver.receiveMessage('\(base64Payload)'); } else { console.log('❌ Vue NativeBridgeReceiver missing'); }"
+        
+        DispatchQueue.main.async { 
+            if self.isWebReady { 
+                self.webView?.evaluateJavaScript(script) { _, err in
+                    if let e = err { print("❌ JS EXECUTION ERROR: \(e)") }
+                } 
+            } else { 
+                self.nativeMessageQueue.append(script) 
+            } 
+        }
+    }
+    private func flushNativeQueue() { DispatchQueue.main.async { self.nativeMessageQueue.forEach { self.webView?.evaluateJavaScript($0, completionHandler: nil) }; self.nativeMessageQueue.removeAll() } }
     
     public func sendCommandToWeb(action: String, payload: [String: Any]? = nil) {
         var req: [String: Any] = ["id": UUID().uuidString, "type": "command", "action": action]; if let p = payload { req["payload"] = p }
