@@ -9,7 +9,8 @@ import Network
 import StoreKit
 import UserNotifications
 
-class NativeWebBridge: NSObject, WKScriptMessageHandler, CLLocationManagerDelegate {
+// 🚀 1. Added 'public' to the class
+public class NativeWebBridge: NSObject, WKScriptMessageHandler, CLLocationManagerDelegate {
     
     private weak var webView: WKWebView?
     private weak var viewController: UIViewController?
@@ -21,7 +22,8 @@ class NativeWebBridge: NSObject, WKScriptMessageHandler, CLLocationManagerDelega
     private let locationManager = CLLocationManager()
     private let networkMonitor = NWPathMonitor()
     
-    init(viewController: UIViewController, webView: WKWebView) {
+    // 🚀 2. Added 'public' to the initializer
+    public init(viewController: UIViewController, webView: WKWebView) {
         self.viewController = viewController
         self.webView = webView
         super.init()
@@ -46,10 +48,13 @@ class NativeWebBridge: NSObject, WKScriptMessageHandler, CLLocationManagerDelega
         NotificationCenter.default.addObserver(forName: UIResponder.keyboardWillHideNotification, object: nil, queue: .main) { [weak self] _ in self?.sendCommandToWeb(action: "event.ui.keyboardChanged", payload: ["isVisible": false]) }
     }
     
-    func triggerDeepLink(url: String) { sendCommandToWeb(action: "event.app.deepLink", payload: ["url": url]) }
-    func triggerBackButton() { sendCommandToWeb(action: "event.app.backButton") }
+    // 🚀 3. Added 'public' to the methods your app calls
+    public func triggerDeepLink(url: String) { sendCommandToWeb(action: "event.app.deepLink", payload: ["url": url]) }
     
-    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+    public func triggerBackButton() { sendCommandToWeb(action: "event.app.backButton") }
+    
+    // 🚀 4. Added 'public' to delegate methods required by public protocols
+    public func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard let b64String = message.body as? String, let data = Data(base64Encoded: b64String), let dict = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] else { return }
         let type = dict["type"] as? String ?? ""; let id = dict["id"] as? String ?? ""; let action = dict["action"] as? String ?? ""; let payload = dict["payload"] as? [String: Any] ?? [:]
         if type == "request" || type == "command" { if let handler = customHandlers[action] { handler(payload) { [weak self] res, err in if type == "request" { self?.sendResponse(id: id, payload: res, error: err) } } } else if type == "request" { sendResponse(id: id, payload: nil, error: "Not implemented on iOS: \(action)") } }
@@ -59,17 +64,20 @@ class NativeWebBridge: NSObject, WKScriptMessageHandler, CLLocationManagerDelega
         let script = "if(window.NativeBridgeReceiver) { window.NativeBridgeReceiver.receiveMessage('\(base64Payload)'); }"
         DispatchQueue.main.async { if self.isWebReady { self.webView?.evaluateJavaScript(script, completionHandler: nil) } else { self.nativeMessageQueue.append(script) } }
     }
+    
     private func flushNativeQueue() { DispatchQueue.main.async { self.nativeMessageQueue.forEach { self.webView?.evaluateJavaScript($0, completionHandler: nil) }; self.nativeMessageQueue.removeAll() } }
     
     private func sendResponse(id: String, payload: Any?, error: String?) {
         var response: [String: Any] = ["id": id, "type": "response"]; if let p = payload { response["payload"] = p }; if let e = error { response["error"] = e }
         if let data = try? JSONSerialization.data(withJSONObject: response), let b64 = String(data: data, encoding: .utf8)?.data(using: .utf8)?.base64EncodedString() { dispatchToWeb(base64Payload: b64) }
     }
-    func sendCommandToWeb(action: String, payload: [String: Any]? = nil) {
+    
+    public func sendCommandToWeb(action: String, payload: [String: Any]? = nil) {
         var req: [String: Any] = ["id": UUID().uuidString, "type": "command", "action": action]; if let p = payload { req["payload"] = p }
         if let data = try? JSONSerialization.data(withJSONObject: req), let b64 = String(data: data, encoding: .utf8)?.data(using: .utf8)?.base64EncodedString() { dispatchToWeb(base64Payload: b64) }
     }
-    func registerHandler(action: String, handler: @escaping ([String: Any], @escaping (Any?, String?) -> Void) -> Void) { customHandlers[action] = handler }
+    
+    public func registerHandler(action: String, handler: @escaping ([String: Any], @escaping (Any?, String?) -> Void) -> Void) { customHandlers[action] = handler }
     
     // MARK: - Handlers
     private func registerDefaultHandlers() {
@@ -113,8 +121,6 @@ class NativeWebBridge: NSObject, WKScriptMessageHandler, CLLocationManagerDelega
             DispatchQueue.main.async {
                 let dataStore = WKWebsiteDataStore.default()
                 let allTypes = WKWebsiteDataStore.allWebsiteDataTypes()
-                
-                // Wipe all website data from the dawn of time (1970)
                 dataStore.removeData(ofTypes: allTypes, modifiedSince: Date(timeIntervalSince1970: 0)) {
                     cb(true, nil)
                 }
@@ -157,15 +163,19 @@ class NativeWebBridge: NSObject, WKScriptMessageHandler, CLLocationManagerDelega
         registerHandler(action: "system.file.pick") { [weak self] _, cb in DispatchQueue.main.async { self?.activeCallback = cb; let pk = UIDocumentPickerViewController(forOpeningContentTypes: [.data], asCopy: true); pk.delegate = self; self?.viewController?.present(pk, animated: true) } }
     }
     
-    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) { if let loc = locations.last { activeCallback?(["lat": loc.coordinate.latitude, "lng": loc.coordinate.longitude], nil); activeCallback = nil } }
-    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) { activeCallback?(nil, error.localizedDescription); activeCallback = nil }
+    // 🚀 5. Added 'public' to Location Manager Delegate
+    public func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) { if let loc = locations.last { activeCallback?(["lat": loc.coordinate.latitude, "lng": loc.coordinate.longitude], nil); activeCallback = nil } }
+    public func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) { activeCallback?(nil, error.localizedDescription); activeCallback = nil }
 }
 
+// 🚀 6. Added 'public' to the Extension delegates
 extension NativeWebBridge: CNContactPickerDelegate, UIDocumentPickerDelegate, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
-    func contactPicker(_ picker: CNContactPickerViewController, didSelect contact: CNContact) { activeCallback?(["name": "\(contact.givenName) \(contact.familyName)", "phoneNumber": contact.phoneNumbers.first?.value.stringValue ?? ""], nil); activeCallback = nil }
-    func contactPickerDidCancel(_ picker: CNContactPickerViewController) { activeCallback?(nil, "Cancelled"); activeCallback = nil }
-    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) { if let url = urls.first, let d = try? Data(contentsOf: url) { activeCallback?(["name": url.lastPathComponent, "base64": d.base64EncodedString()], nil) }; activeCallback = nil }
-    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) { activeCallback?(nil, "Cancelled"); activeCallback = nil }
-    func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) { picker.dismiss(animated: true); if let i = info[.originalImage] as? UIImage, let d = i.jpegData(compressionQuality: 0.8) { activeCallback?(["base64": d.base64EncodedString()], nil) }; activeCallback = nil }
-    func imagePickerControllerDidCancel(_ picker: UIImagePickerController) { picker.dismiss(animated: true); activeCallback?(nil, "Cancelled"); activeCallback = nil }
+    public func contactPicker(_ picker: CNContactPickerViewController, didSelect contact: CNContact) { activeCallback?(["name": "\(contact.givenName) \(contact.familyName)", "phoneNumber": contact.phoneNumbers.first?.value.stringValue ?? ""], nil); activeCallback = nil }
+    public func contactPickerDidCancel(_ picker: CNContactPickerViewController) { activeCallback?(nil, "Cancelled"); activeCallback = nil }
+    
+    public func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) { if let url = urls.first, let d = try? Data(contentsOf: url) { activeCallback?(["name": url.lastPathComponent, "base64": d.base64EncodedString()], nil) }; activeCallback = nil }
+    public func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) { activeCallback?(nil, "Cancelled"); activeCallback = nil }
+    
+    public func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) { picker.dismiss(animated: true); if let i = info[.originalImage] as? UIImage, let d = i.jpegData(compressionQuality: 0.8) { activeCallback?(["base64": d.base64EncodedString()], nil) }; activeCallback = nil }
+    public func imagePickerControllerDidCancel(_ picker: UIImagePickerController) { picker.dismiss(animated: true); activeCallback?(nil, "Cancelled"); activeCallback = nil }
 }
