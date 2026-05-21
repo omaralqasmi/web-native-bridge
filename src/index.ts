@@ -39,16 +39,36 @@ export class NativeWebBridge {
 
         if (typeof window !== 'undefined') {
             this.setupGlobalReceiver();
+            this.autoUnlockQueue();
         }
     }
-
+    private autoUnlockQueue(attempts = 0) {
+        const win = window as any;
+        
+        // 1. Check if Android or iOS has injected its interface
+        if (win.webkit?.messageHandlers?.iosInterface || win.AndroidInterface) {
+            this.log("✅ Native Interface Detected! Auto-unlocking web queue...");
+            this.isNativeReady = true;
+            this.flushQueue();
+            return;
+        }
+        
+        // 2. If not found, keep checking every 50ms (Cap at 5 seconds)
+        if (attempts < 100) {
+            setTimeout(() => this.autoUnlockQueue(attempts + 1), 50);
+        } else {
+            this.log("⚠️ No Native Interface found after 5 seconds. Running in Web-Only Mode.");
+        }
+    }
     private setupGlobalReceiver() {
         (window as any)[this.options.namespace] = {
             receiveMessage: (b64: string) => this.handleIncoming(b64),
             signalReady: () => {
-                this.log("✅ Native signaled readiness! Unlocking web queue...");
-                this.isNativeReady = true;
-                this.flushQueue();
+                if (!this.isNativeReady) {
+                    this.log("✅ Native manually signaled readiness!");
+                    this.isNativeReady = true;
+                    this.flushQueue();
+                }            
             }
         };
     }
