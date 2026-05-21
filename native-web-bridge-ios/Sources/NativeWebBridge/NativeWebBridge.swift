@@ -161,7 +161,7 @@ class NativeWebBridge: NSObject, WKScriptMessageHandler, CLLocationManagerDelega
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) { activeCallback?(nil, error.localizedDescription); activeCallback = nil }
 }
 
-extension WebNativeBridge: CNContactPickerDelegate, UIDocumentPickerDelegate, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+extension NativeWebBridge: CNContactPickerDelegate, UIDocumentPickerDelegate, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
     func contactPicker(_ picker: CNContactPickerViewController, didSelect contact: CNContact) { activeCallback?(["name": "\(contact.givenName) \(contact.familyName)", "phoneNumber": contact.phoneNumbers.first?.value.stringValue ?? ""], nil); activeCallback = nil }
     func contactPickerDidCancel(_ picker: CNContactPickerViewController) { activeCallback?(nil, "Cancelled"); activeCallback = nil }
     func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) { if let url = urls.first, let d = try? Data(contentsOf: url) { activeCallback?(["name": url.lastPathComponent, "base64": d.base64EncodedString()], nil) }; activeCallback = nil }
