@@ -1,6 +1,6 @@
 {
   "name": "native-web-bridge",
-  "version": "1.0.21",
+  "version": "1.0.22",
   "description": "A robust, type-safe, bidirectional communication bridge between WebViews and Native iOS/Android apps.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

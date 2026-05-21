@@ -21,12 +21,16 @@ public class NativeWebBridge: NSObject, WKScriptMessageHandler, CLLocationManage
     private let locationManager = CLLocationManager()
     private let networkMonitor = NWPathMonitor()
     
-    // 🚀 1. NEW INIT: Injects into the config BEFORE the WebView is created
+    // 🚀 NEW INIT: Registers every possible alias the NPM library might want
     public init(viewController: UIViewController, configuration: WKWebViewConfiguration) {
         self.viewController = viewController
         super.init()
         
+        // The Shotgun Approach: Register all common names to the same Swift class
         configuration.userContentController.add(self, name: "iosInterface")
+        configuration.userContentController.add(self, name: "nativeWebBridge")
+        configuration.userContentController.add(self, name: "NativeWebBridge")
+        
         locationManager.delegate = self
         setupLifecycleHooks()
         
@@ -37,8 +41,7 @@ public class NativeWebBridge: NSObject, WKScriptMessageHandler, CLLocationManage
         }
         networkMonitor.start(queue: DispatchQueue.global(qos: .background))
         registerDefaultHandlers()
-    }
-    
+    }    
     // 🚀 2. NEW ATTACH: Links the WebView after it's created
     public func attachWebView(_ webView: WKWebView) {
         self.webView = webView
